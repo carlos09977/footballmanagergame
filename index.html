@@ -637,7 +637,11 @@
       <div class="scroll" style="max-height:200px;"><table id="finTopSalaries"></table></div>
     </div>
 
-  </div> </div> <script src="teams.js"></script>
+  </div> </div> 
+<script src="teams.js"></script>
+<script src="teams1.js"></script>
+<script src="teams2.js"></script>
+<script src="teams3.js"></script>
 
 <script>
 // ====== CONSTANTES E INTERNACIONALIZACIÓN ======
@@ -3492,28 +3496,32 @@ if(!game.calendar) {
 
 // ====== CARGA DE DATOS EXTERNOS (teams.js) ======
 
-// Mapa para vincular los nombres del JSON con los nombres oficiales de tu base de datos
 const TEAM_NAME_MAPPING = {
-    "Real Madrid": "Real Madrid C. F.",
-    "Atlético de Madrid": "Atlético de Madrid",
-    "Real Betis Balompié": "Real Betis Balompié",
-    "FC Barcelona": "F. C. Barcelona",
-    "Athletic Club": "Athletic Club",
-    "Valencia CF": "Valencia C. F.",
-    "Sevilla FC": "Sevilla F. C.",
-    "Real Sociedad": "Real Sociedad",
-    "RCD Espanyol Barcelona": "R. C. D. Espanyol",
-    "Elche CF": "Elche C. F.",
-    "Real Oviedo": "Real Oviedo",
-    "Levante UD": "Levante U. D.",
-    "RCD Mallorca": "R. C. D. Mallorca",
-    "RC Celta": "R. C. Celta de Vigo",
-    "CA Osasuna": "C. A. Osasuna",
-    "Villarreal CF": "Villarreal C. F.",
-    "Deportivo Alavés": "Deportivo Alavés",
-    "Getafe CF": "Getafe C. F.",
-    "Rayo Vallecano": "Rayo Vallecano",
-    "Girona FC": "Girona F. C."
+    // 1ª División
+    "Real Madrid": "Real Madrid C. F.", "Atlético de Madrid": "Atlético de Madrid", "Real Betis Balompié": "Real Betis Balompié",
+    "FC Barcelona": "F. C. Barcelona", "Athletic Club": "Athletic Club", "Valencia CF": "Valencia C. F.", "Sevilla FC": "Sevilla F. C.",
+    "Real Sociedad": "Real Sociedad", "RCD Espanyol Barcelona": "R. C. D. Espanyol", "Elche CF": "Elche C. F.", "Real Oviedo": "Real Oviedo",
+    "Levante UD": "Levante U. D.", "RCD Mallorca": "R. C. D. Mallorca", "RC Celta": "R. C. Celta de Vigo", "CA Osasuna": "C. A. Osasuna",
+    "Villarreal CF": "Villarreal C. F.", "Deportivo Alavés": "Deportivo Alavés", "Getafe CF": "Getafe C. F.", "Rayo Vallecano": "Rayo Vallecano",
+    "Girona FC": "Girona F. C.",
+    // 2ª División
+    "Deportivo de A Coruña": "Deportivo de La Coruña", "UD Las Palmas": "U. D. Las Palmas", "Málaga CF": "Málaga C. F.",
+    "Sporting Gijón": "Sporting de Gijón", "Real Valladolid CF": "Real Valladolid C. F.", "Racing Santander": "Racing de Santander",
+    "Córdoba CF": "Córdoba C. F.", "Cádiz CF": "Cádiz C. F.", "Granada CF": "Granada C. F.", "UD Almería": "U. D. Almería",
+    "CD Castellón": "C. D. Castellón", "Cultural Leonesa": "Cultural y Deportiva Leonesa", "CD Leganés": "C. D. Leganés",
+    "Burgos CF": "Burgos C. F.", "SD Huesca": "S. D. Huesca", "SD Eibar": "S. D. Eibar", "AD Ceuta FC": "A. D. Ceuta F. C.",
+    "CD Mirandés": "C. D. Mirandés", "FC Andorra": "F. C. Andorra", "Real Sociedad B": "Real Sociedad \"B\"",
+    // 1ª RFEF
+    "CD Tenerife": "C. D. Tenerife", "Mérida AD": "A. D. Mérida", "Racing Ferrol": "Racing Club Ferrol", "Pontevedra CF": "Pontevedra C. F.",
+    "SD Ponferradina": "S. D. Ponferradina", "Barakaldo CF": "Barakaldo C. F.", "Zamora CF": "Zamora C. F.", "CD Lugo": "C. D. Lugo",
+    "UD Ibiza": "U. D. Ibiza", "CE Sabadell FC": "C. E. Sabadell F. C.", "Marbella FC": "Marbella F. C.", "RC Celta Fortuna": "R. C. Celta Fortuna",
+    "Real Murcia CF": "Real Murcia C. F.", "Hércules CF": "Hércules C. F.", "Villarreal CF B": "Villarreal C. F. \"B\"", 
+    "FC Cartagena": "F. C. Cartagena", "Gimnàstic de Tarragona": "Gimnàstic de Tarragona", "AD Alcorcón": "A. D. Alcorcón", 
+    "Antequera CF": "Antequera C. F.", "CD Teruel": "C. D. Teruel", "Atlético Sanluqueño CF": "Atlético Sanluqueño C. F.", 
+    "CE Europa": "C. E. Europa", "CA Osasuna Promesas": "C. A. Osasuna Promesas", "Bilbao Athletic": "Bilbao Athletic", 
+    "Juventud Torremolinos CF": "Juventud de Torremolinos C. F.", "Betis Deportivo Balompié": "Betis Deportivo", 
+    "Real Avilés Industrial": "Real Avilés Industrial", "Unionistas CF": "Unionistas de Salamanca C. F.", 
+    "CD Arenteiro": "C. D. Arenteiro", "CP Cacereño": "C. P. Cacereño", "CD Eldense": "C. D. Eldense", "Ourense CF": "Ourense C. F."
 };
 
 // Diccionario de banderas
@@ -3568,12 +3576,20 @@ function calcAgeFromDOB(dobString) {
 
 // Función principal de carga (Síncrona, usando el archivo local .js)
 function loadExternalData() {
-    if (typeof TEAMS_DATA === 'undefined') {
-        console.warn("⚠️ No se encontró la variable TEAMS_DATA. Revisa el Paso 1 y el Paso 2.");
+    let allClubs = [];
+
+    // Recopilar todos los clubes de los archivos que existan en el HTML
+    if (typeof TEAMS_DATA !== 'undefined' && TEAMS_DATA.clubs) allClubs = allClubs.concat(TEAMS_DATA.clubs);
+    if (typeof TEAMS_1 !== 'undefined' && TEAMS_1.clubs) allClubs = allClubs.concat(TEAMS_1.clubs);
+    if (typeof TEAMS_2 !== 'undefined' && TEAMS_2.clubs) allClubs = allClubs.concat(TEAMS_2.clubs);
+    if (typeof TEAMS_3 !== 'undefined' && TEAMS_3.clubs) allClubs = allClubs.concat(TEAMS_3.clubs);
+
+    if (allClubs.length === 0) {
+        console.warn("⚠️ No se encontraron datos de equipos. Revisa los archivos .js.");
     } else {
-        TEAMS_DATA.clubs.forEach(club => {
-            let mappedName = TEAM_NAME_MAPPING[club.name];
-            if (!mappedName) return; 
+        allClubs.forEach(club => {
+            // Si el nombre no está en el mapa, usamos el nombre original por si acaso
+            let mappedName = TEAM_NAME_MAPPING[club.name] || club.name; 
 
             let targetRealData = REAL_DATA.find(rd => rd.name === mappedName);
             if (targetRealData) {
@@ -3594,10 +3610,10 @@ function loadExternalData() {
                 });
             }
         });
-        console.log("✅ Jugadores reales de teams.js enlazados correctamente.");
+        console.log("✅ Jugadores reales de todos los archivos importados correctamente.");
     }
 
-    // Todo listo, creamos el mundo e inicializamos la UI del menú principal
+    // Inicializamos el mundo
     window._previewWorld = buildWorld();
     fillDivSelect();
     fillTeamSelect();
