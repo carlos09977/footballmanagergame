@@ -345,6 +345,68 @@
     text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;
   }
   .profile-stat-box b { font-size: 1.3em; color: var(--text); }
+  /* =======================================================
+     📱 OPTIMIZACIÓN RESPONSIVE PARA MÓVILES
+     ======================================================= */
+  
+  /* 1. Scroll horizontal interno para las tablas */
+  .scroll {
+    overflow-x: auto; /* Permite deslizar la tabla a los lados */
+    -webkit-overflow-scrolling: touch; /* Deslizamiento suave en iPhone */
+    width: 100%;
+  }
+  
+  /* Obliga a la tabla a respetar su tamaño y generar el scroll interno */
+  .scroll table {
+    min-width: max-content; 
+  }
+
+  /* 2. Ajustes específicos para pantallas pequeñas (Móviles) */
+  @media (max-width: 768px) {
+    /* Reducir márgenes y paddings para ganar espacio */
+    body { padding: 8px; }
+    .panel { padding: 12px; }
+    .container { max-width: 100%; }
+    
+    /* Menú de navegación más compacto */
+    nav button { 
+      padding: 8px 4px; 
+      font-size: 0.75em; 
+      min-width: 60px;
+    }
+    
+    /* Apilar cabeceras de perfiles (jugador/equipo) */
+    .profile-header { 
+      flex-direction: column; 
+      text-align: center; 
+      gap: 10px;
+    }
+    
+    /* El marcador en directo: poner equipos uno encima del otro */
+    .live-teams-row { 
+      flex-direction: column; 
+      align-items: center; 
+      gap: 15px; 
+    }
+    .live-team-col { 
+      width: 100% !important; 
+      text-align: center !important; 
+      align-items: center !important; 
+      border: none !important; 
+      padding: 0 !important; 
+    }
+    .live-score-col { width: 100% !important; padding: 10px 0; }
+    
+    /* Ajustar las cajas de estadísticas */
+    .profile-stats-grid {
+      grid-template-columns: repeat(2, 1fr); /* 2 columnas en móvil */
+    }
+    
+    /* Pizarrón Táctico en móvil */
+    #tacticalAnalysis > div > div {
+      flex-direction: column;
+    }
+  }
 </style>
 </head>
 <body>
@@ -461,7 +523,26 @@
           <button class="action sec" onclick="autoLineup()">⚡ Auto 11</button>
         </div>
       </div>
-      
+      <div style="background:var(--card-2); padding:15px; border-radius:var(--radius); margin-top:20px; border: 1px solid var(--border);">
+    <h3>⚙️ Instrucciones Tácticas</h3>
+    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-top:10px;">
+        <select id="tacticalMental" onchange="updateTacticalAnalysis()">
+            <option value="0.7">Defensiva (-xG, +Seguridad)</option>
+            <option value="1.0" selected>Equilibrada</option>
+            <option value="1.4">Ofensiva (+Tiros, -Defensa)</option>
+        </select>
+        <select id="tacticalStyle" onchange="updateTacticalAnalysis()">
+            <option value="1.2">Tiki-Taka (+Posesión)</option>
+            <option value="1.0" selected>Estándar</option>
+            <option value="0.7">Balones Largos (-Posesión)</option>
+        </select>
+        <select id="tacticalPress" onchange="updateTacticalAnalysis()">
+            <option value="0.8">Bloque Bajo (Ahorro Energía)</option>
+            <option value="1.3">Presión Alta (+Robos, -Energía)</option>
+        </select>
+    </div>
+    <div id="tacticalAnalysis" style="margin-top:15px; font-size:0.9em;"></div>
+</div>
       <div class="tactics-grid" style="margin-bottom: 25px;">
         <div class="pitch-container">
           <div class="pitch" id="pitch"></div>
@@ -800,15 +881,45 @@ function getEquipoConfig(nombreEquipo) {
   };
 }
 
-function makePlayer(pos,minR,maxR,ageMin=18,ageMax=33){
-  let rating=Math.max(40,Math.min(99,randInt(minR,maxR)));
-  let isEsp = Math.random() < 0.6;
-  let nat = isEsp ? "🇪🇸" : rand(NATIONS);
+// NUEVO: Generador inteligente de atributos por posición
+function generateAttributes(rating, pos) {
+    let attrs = { def: rating, pas: rating, att: rating, phy: rating, men: rating };
+    let variance = 7; // Variabilidad para que no todos sean iguales
+    
+    // Potenciamos atributos clave según posición y bajamos los inútiles
+    if (pos === 'GK') { attrs.def += 6; attrs.pas -= 2; attrs.att -= 15; attrs.phy -= 2; attrs.men += 3; }
+    else if (pos === 'DEF') { attrs.def += 7; attrs.pas -= 2; attrs.att -= 8; attrs.phy += 2; attrs.men += 2; }
+    else if (pos === 'MID') { attrs.def -= 3; attrs.pas += 7; attrs.att += 2; attrs.phy += 0; attrs.men += 1; }
+    else if (pos === 'FWD') { attrs.def -= 10; attrs.pas += 0; attrs.att += 8; attrs.phy += 3; attrs.men -= 1; }
+    
+    for(let key in attrs) {
+        attrs[key] = Math.max(1, Math.min(99, attrs[key] + randInt(-variance, variance)));
+    }
+    
+    // La Media General ahora es el promedio de estos 5 atributos
+    let trueRating = Math.round((attrs.def + attrs.pas + attrs.att + attrs.phy + attrs.men) / 5);
+    return { attrs, trueRating };
+}
+
+// ACTUALIZADO: makePlayer ahora usa los nuevos atributos
+function makePlayer(pos,minR,maxR,ageMin=18,ageMax=33, forceNat=null){
+  let baseRating = Math.max(40,Math.min(99,randInt(minR,maxR)));
+  let { attrs, trueRating } = generateAttributes(baseRating, pos);
+  
+  let isEsp = Math.random() < 0.8;
+  let nat = forceNat ? forceNat : (isEsp ? "🇪🇸" : rand(["🇫🇷","🏴󠁧󠁢󠁥󠁮󠁧󠁿","🇩🇪","🇮🇹","🇵🇹","🇧🇷","🇦🇷","🇳🇱","🇺🇾"]));
   let age = randInt(ageMin,ageMax);
-  let potential = calcPotential(rating, age);
-  return {id:_pid++,name:randName(isEsp),pos,rating,age,nat,potential,scouted:0,startRating:rating,
+  let potential = calcPotential(trueRating, age);
+  
+  let name = "";
+  if (NAT_NAMES[nat]) name = rand(NAT_NAMES[nat].first) + " " + rand(NAT_NAMES[nat].last);
+  else name = rand(NAT_NAMES["🇪🇸"].first) + " " + rand(NAT_NAMES["🏴󠁧󠁢󠁥󠁮󠁧󠁿"].last);
+
+  return {id:_pid++,name:name,pos,rating:trueRating,age,nat,potential,scouted:0,startRating:trueRating,
+    baseValue: 0, // Para los regens inventados
+    def: attrs.def, pas: attrs.pas, att: attrs.att, phy: attrs.phy, men: attrs.men,
     goals:0,assists:0,apps:0,injuredWeeks:0,suspendedWeeks:0,yellows:0, contract: randInt(1, 4),
-    energy: 100, rhythm: 70}; // ====== NUEVO: Energía y Ritmo ======
+    energy: 100, rhythm: 70}; 
 }
 function calcPotential(rating, age){
   let margin;
@@ -955,7 +1066,9 @@ function buildWorld() {
       return {
         id: _pid++, name: p.name, pos: p.pos, rating: rating, age: age, nat: p.nat || "🇪🇸",
         potential: calcPotential(rating, age), scouted: 2, startRating: rating,
-        goals: 0, assists: 0, apps: 0, injuredWeeks: 0, suspendedWeeks: 0, yellows: 0, contract: randInt(1, 4)
+        baseValue: p.baseValue, // <--- Y ESTO TAMBIÉN ES VITAL
+        goals: 0, assists: 0, apps: 0, injuredWeeks: 0, suspendedWeeks: 0, yellows: 0, contract: randInt(1, 4),
+        energy: 100, rhythm: 70
       };
     });
 
@@ -1061,27 +1174,32 @@ function teamRating(team){
 
 function changeFormation(){ let f=document.getElementById("formationSelect").value; game.teams[game.myTeamIndex].formation=f; autoLineup(); }
 function getStarters(team){
+  let arr = [];
+  
+  // 1. Intentamos sacar el 11 titular que haya guardado el entrenador
   if(team.lineup && team.lineup.length){
-    let arr=team.lineup.map(id=>team.players.find(p=>p.id===id)).filter(p=>p&&isAvailable(p));
-    if(arr.length>=7) return arr;
+    arr = team.lineup.map(id => team.players.find(p => p.id === id)).filter(p => p && isAvailable(p));
   }
-  let avail=team.players.filter(isAvailable);
   
-  // ARREGLO: La IA ahora tiene en cuenta la ENERGÍA.
-  // Si un jugador tiene menos de 65% de energía, su "nota" baja para priorizar suplentes frescos.
-  avail.sort((a,b) => {
-    let scoreA = a.rating * (a.energy >= 65 ? 1 : (Math.max(10, a.energy)/100));
-    let scoreB = b.rating * (b.energy >= 65 ? 1 : (Math.max(10, b.energy)/100));
-    return scoreB - scoreA;
-  });
+  // 2. SALVAVIDAS REALISTA: Si hay sancionados/lesionados y el equipo se queda con menos de 11, 
+  // el segundo entrenador mete automáticamente a los mejores suplentes disponibles para no jugar en desventaja.
+  if(arr.length < 11) {
+      let used = new Set(arr.map(p => p.id));
+      let avail = team.players.filter(p => isAvailable(p) && !used.has(p.id))
+                              .sort((a, b) => b.rating - a.rating); // Ordena por media
+                              
+      // Rellenamos los huecos hasta llegar a 11 (o hasta que no queden jugadores sanos)
+      while(arr.length < 11 && avail.length > 0) {
+          let sub = avail.shift();
+          arr.push(sub);
+          // Si es mi equipo, arreglamos también la alineación visual para que el usuario lo vea
+          if (game && game.teams && game.teams.indexOf(team) === game.myTeamIndex) {
+              team.lineup.push(sub.id);
+          }
+      }
+  }
   
-  let gks=avail.filter(p=>p.pos==="GK");
-  let others=avail.filter(p=>p.pos!=="GK");
-  
-  let st = others.slice(0,10); 
-  if(gks.length) st.push(gks[0]); 
-  else if(others.length > 10) st.push(others[10]); // Parche extremo: si no hay portero, mete al de campo
-  return st;
+  return arr;
 }
 
 function autoLineup(){
@@ -1266,52 +1384,42 @@ function totalWeeks(){return (TEAMS_PER_DIV-1)*2;}
 // Basado en concepto de Football Manager: xG, Calidad de Oportunidades, Posesión, etc.
 
 /**
- * MÓDULO: Cálculo de Estadísticas por línea
- * Mejora: Incluye factores adicionales (form, moral, experiencia)
+ * MÓDULO: Cálculo de Estadísticas por línea (Con Atributos y Regla 70/30)
  */
 function getTeamStats(team) {
   let s = getStarters(team);
-  if(!s.length) return { att: 40, mid: 40, def: 40, gk: 40, form: 5, experience: 5, teamwork: 5 };
+  if(!s.length) return { att: 40, mid: 40, def: 40, gk: 40, energyAvg: 100 };
   
-  // ====== NUEVO: CÁLCULO DE RENDIMIENTO REAL SEGÚN ENERGÍA Y RITMO ======
-  // Un jugador al 60% de energía rendirá peor. El ritmo alto da un ligero bonus.
-  const getEffectiveRating = (p) => {
-      let e = (p.energy || 100) / 100;
-      let r = ((p.rhythm || 70) - 50) * 0.05; // Bonus/Penalización por ritmo (+2.5 a -2.5)
-      return (p.rating * e) + r; 
+  let eSum = 0;
+  s.forEach(p => eSum += (p.energy || 100));
+  let energyAvg = eSum / s.length;
+  
+  const getEffectiveAttr = (p, attrType) => {
+      let e = (p.energy || 100);
+      let factor = e >= 75 ? 1 : (e / 100); 
+      let r = ((p.rhythm || 70) - 50) * 0.05; 
+      
+      // REGLA 70/30: 70% del atributo específico + 30% de la media general.
+      // Así los cracks rinden bien en cualquier lado, pero los especialistas son mejores.
+      let specificVal = p[attrType] || p.rating;
+      let blendedRating = (specificVal * 0.7) + (p.rating * 0.3);
+      
+      return (blendedRating * factor) + r; 
   };
 
-  let gk = s.filter(p=>p.pos==='GK').reduce((sum,p)=>sum + getEffectiveRating(p), 0) || 40;
-  
-  let def = s.filter(p=>p.pos==='DEF'); 
-  let defAvg = def.length ? def.reduce((sum,p)=>sum + getEffectiveRating(p), 0) / def.length : 40;
-  
-  let mid = s.filter(p=>p.pos==='MID'); 
-  let midAvg = mid.length ? mid.reduce((sum,p)=>sum + getEffectiveRating(p), 0) / mid.length : 40;
-  
-  let fwd = s.filter(p=>p.pos==='FWD'); 
-  let fwdAvg = fwd.length ? fwd.reduce((sum,p)=>sum + getEffectiveRating(p), 0) / fwd.length : 40;
-  // ========================================================================
+  let gk = s.filter(p=>p.pos==='GK').reduce((sum,p)=>sum + getEffectiveAttr(p, 'def'), 0) || 40;
+  let def = s.filter(p=>p.pos==='DEF'); let defAvg = def.length ? def.reduce((sum,p)=>sum + getEffectiveAttr(p, 'def'), 0) / def.length : 40;
+  let mid = s.filter(p=>p.pos==='MID'); let midAvg = mid.length ? mid.reduce((sum,p)=>sum + getEffectiveAttr(p, 'pas'), 0) / mid.length : 40;
+  let fwd = s.filter(p=>p.pos==='FWD'); let fwdAvg = fwd.length ? fwd.reduce((sum,p)=>sum + getEffectiveAttr(p, 'att'), 0) / fwd.length : 40;
 
   let moralBonus = team.moral !== undefined ? Math.round((team.moral - 50) / 15) : 0;
-  
-  // Form promedio de jugadores (entre -3 y +3)
-  let form = s.length ? Math.round(s.reduce((sum, p) => sum + (p.form || 0), 0) / s.length) : 0;
-  
-  // Experiencia combinada (youth = 0, veteran = 10+)
-  let experience = s.length ? Math.round(s.reduce((sum, p) => sum + Math.min((p.age || 25) - 18, 15) / 2, 0) / s.length) : 5;
-  
-  // Cohesión de equipo (teamwork)
-  let teamwork = Math.min(5 + Math.round((team.moral - 50) / 10), 10);
   
   return { 
     att: fwdAvg + moralBonus, 
     mid: midAvg + moralBonus, 
     def: defAvg + moralBonus, 
     gk: gk + moralBonus,
-    form: form,
-    experience: experience,
-    teamwork: teamwork
+    energyAvg: energyAvg
   };
 }
 
@@ -1331,117 +1439,279 @@ function calculatePossession(homeMid, awayMid) {
 }
 
 /**
- * Cálculo de xG (Expected Goals) POR OPORTUNIDAD
+ * Número de disparos realistas (Topados)
  */
-function calculatexGPerShot(attackRating, defenseRating, midDominance, formBonus, homeAdvantage = 0) {
-  // Base: diferencia entre ataque y defensa
+function calculateShotsOnTarget(possession, midRating, isHome) {
+  // Disparos a puerta mucho más realistas (entre 2 y 10)
+  let baseShots = 3 + (possession / 100) * 5; 
+  let midBonus = Math.max(0, (midRating - 50) * 0.06); // El mediocampo ayuda a generar juego
+  let homeBonus = isHome ? 1 : 0; // Jugar en casa te asegura 1 tiro más por empuje del público
+  return Math.max(2, Math.round(baseShots + midBonus + homeBonus));
+}
+
+/**
+ * Cálculo de xG (Expected Goals) POR OPORTUNIDAD Equilibrado
+ */
+function calculatexGPerShot(attackRating, defenseRating, fatiguePenalty, isHome) {
   let qualityDiff = attackRating - defenseRating;
   
-  // xG base por disparo (entre 0.02 y 0.15)
-  let baseXG = 0.05 + (qualityDiff * 0.003);
-  baseXG = Math.max(0.02, Math.min(0.15, baseXG));
+  // Cap para evitar goleadas absurdas. La diferencia de calidad no puede exceder +-25
+  if (qualityDiff > 25) qualityDiff = 25;
+  if (qualityDiff < -25) qualityDiff = -25;
   
-  // Ajuste por dominio de mediocampo (si dominas el medio, mejores oportunidades)
-  let midAdjustment = 1 + (midDominance * 0.05); // Si dominas medio, +5% xG
+  // xG base realista por tiro (0.04 a 0.18 máximo de media)
+  let baseXG = 0.10 + (qualityDiff * 0.0035); 
   
-  // Ajuste por forma (form entre -3 y +3, se normaliza)
-  let formAdjustment = 1 + (formBonus * 0.08); // Cada punto de form = 8% xG
+  // El cansancio arruina la puntería
+  baseXG *= fatiguePenalty; 
   
-  // Ventaja de casa
-  let homeAdjustment = 1 + (homeAdvantage * 0.03); // +3% si juegas en casa
+  // Pequeño plus por jugar en casa
+  if (isHome) baseXG *= 1.05; 
   
-  let finalXG = baseXG * midAdjustment * formAdjustment * homeAdjustment;
-  return Math.min(0.25, finalXG); // Máximo 0.25 xG por disparo
+  return Math.max(0.04, Math.min(0.25, baseXG));
 }
 
 /**
- * Número de disparos basado en posesión y creatividad
- * Equipos con buen mediocampo generan más disparos
- */
-function calculateShotsOnTarget(possession, midRating, experience, teamwork) {
-  // Base: 4-12 disparos a puerta por equipo (según posesión)
-  let baseShots = 4 + (possession / 100) * 8;
-  
-  // Incremento por mediocampo (creatividad y juego)
-  let midBonus = (midRating - 40) * 0.05; // Cada punto > 40 suma disparos
-  
-  // Incremento por experiencia (veteranos convierten mejor)
-  let expBonus = (experience - 5) * 0.3;
-  
-  // Incremento por cohesión de equipo
-  let teamBonus = (teamwork - 5) * 0.2;
-  
-  let totalShots = baseShots + midBonus + expBonus + teamBonus;
-  return Math.max(3, Math.round(totalShots)); // Mínimo 3, redondeado
-}
-
-/**
- * Conversión de xG a goles con variabilidad
+ * Conversión de xG a goles SIN multiplicadores mágicos
  */
 function convertXGToGoals(xG) {
-  let goals = 0;
-  
-  // Cada 0.1 xG es aproximadamente 1 disparo (con variación)
-  while (xG > 0) {
-    let shotXG = Math.min(xG, 0.25);
-    if (Math.random() < shotXG) {
-      goals++;
+    let goals = 0;
+    // Dividimos el xG total en fracciones simulando los disparos a puerta
+    let chunks = Math.ceil(xG / 0.25);
+    let probPerChunk = xG / chunks;
+    
+    for(let i=0; i<chunks; i++) {
+        if(Math.random() < probPerChunk) goals++;
     }
-    xG -= 0.25;
-  }
-  
-  return goals;
+    
+    // Factor suerte al mínimo (solo un 5% de que caiga un gol de rebote o cantada del portero)
+    if (Math.random() < 0.05) goals++; 
+    
+    return goals;
 }
 
-/**
- * MOTOR PRINCIPAL: simMatch mejorado con xG
- * 
- * Flujo:
- * 1. Calcular stats de ambos equipos
- * 2. Calcular posesión según mediocampo
- * 3. Calcular disparos según posesión y mediocampo
- * 4. Calcular xG promedio por disparo
- * 5. Convertir xG total a goles (con variabilidad)
- */
+// ====== FUNCIONES VISUALES PARA EL PANEL DE ESTADÍSTICAS ======
+function createStatBar(homeVal, awayVal, label) {
+    let hNum = parseFloat(homeVal) || 0;
+    let aNum = parseFloat(awayVal) || 0;
+    let total = hNum + aNum;
+    if (total === 0) total = 1; 
+    let hPct = (hNum / total) * 100;
+    let aPct = (aNum / total) * 100;
+    
+    return `
+    <div style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; font-size:0.85em; margin-bottom:6px;">
+            <b style="width:40px; text-align:left;">${homeVal}</b> 
+            <span style="color:var(--text-dim); text-transform:uppercase; font-size:0.8em; letter-spacing:0.5px;">${label}</span> 
+            <b style="width:40px; text-align:right;">${awayVal}</b>
+        </div>
+        <div style="display:flex; height:6px; background:var(--bg); border-radius:999px; overflow:hidden;">
+            <div style="width:${hPct}%; background:var(--accent);"></div>
+            <div style="width:${aPct}%; background:var(--text-faint);"></div>
+        </div>
+    </div>`;
+}
+
+function generateMatchStatsHTML(res) {
+    let hp = res.hPoss || 50; let ap = res.aPoss || 50;
+    let hXG = res.hXG || (res.hG * 0.8 + 0.2).toFixed(2); let aXG = res.aXG || (res.aG * 0.8 + 0.2).toFixed(2);
+    let hST = res.hShotsT || (res.hG + randInt(1, 4)); let aST = res.aShotsT || (res.aG + randInt(1, 4));
+    let hS = res.hShots || (hST + randInt(2, 6)); let aS = res.aShots || (aST + randInt(2, 6));
+    let hPass = res.hPasses || randInt(350, 450); let aPass = res.aPasses || randInt(350, 450);
+    let hPA = res.hPassAcc || randInt(75, 88); let aPA = res.aPassAcc || randInt(75, 88);
+    let hF = res.hFouls || randInt(8, 15); let aF = res.aFouls || randInt(8, 15);
+    let hC = res.hCorners || randInt(2, 8); let aC = res.aCorners || randInt(2, 8);
+
+    return `
+    <div style="background:var(--card-2); padding:20px; border-radius:var(--radius); border:1px solid var(--border); margin:15px 0;">
+        <h4 class="center" style="margin-bottom:20px; color:var(--text-faint); font-size:0.85em; letter-spacing:1.5px;">📊 ESTADÍSTICAS DEL PARTIDO</h4>
+        ${createStatBar(hXG, aXG, 'Goles Esperados (xG)')}
+        ${createStatBar(hp + '%', ap + '%', 'Posesión')}
+        ${createStatBar(hS, aS, 'Tiros Totales')}
+        ${createStatBar(hST, aST, 'Tiros a Puerta')}
+        ${createStatBar(hPass, aPass, 'Pases')}
+        ${createStatBar(hPA + '%', aPA + '%', 'Precisión de Pases')}
+        ${createStatBar(hF, aF, 'Faltas')}
+        ${createStatBar(hC, aC, 'Córners')}
+    </div>`;
+}
+
 function simMatch(h, a) {
   let H = game.teams[h], A = game.teams[a];
   let hs = getTeamStats(H), as = getTeamStats(A);
-
-  // 1. Posesión (basada en mediocampo)
-  let possession = calculatePossession(hs.mid, as.mid);
-
-  // 2. Mediocampo
-  let midDiff = (hs.mid + 8) - as.mid;
+  let hPitch = getStarters(H), aPitch = getStarters(A);
+  let hBench = H.players.filter(p => !hPitch.includes(p) && isAvailable(p));
+  let aBench = A.players.filter(p => !aPitch.includes(p) && isAvailable(p));
   
-  // 3. Disparos para cada equipo
-  let homeShotsOnTarget = calculateShotsOnTarget(possession.home, hs.mid, hs.experience, hs.teamwork);
-  let awayShotsOnTarget = calculateShotsOnTarget(possession.away, as.mid, as.experience, as.teamwork);
+  let events = [];
 
-  // 4. Ataque vs Defensa
-  // El ataque se beneficia si dominas el medio
-  let hAtt = hs.att + (midDiff > 0 ? midDiff * 0.3 : 0);
-  let aDef = as.def * 0.75 + as.gk * 0.25; // Defensa 75%, Portero 25%
-  
-  let aAtt = as.att + (midDiff < 0 ? Math.abs(midDiff) * 0.3 : 0);
-  let hDef = hs.def * 0.75 + hs.gk * 0.25;
+  function rollEventsAndPenalties(pitch, bench, isHome) {
+      let penalty = 0;
+      pitch.forEach(p => {
+          let isDef = (p.pos === 'DEF'), isMid = (p.pos === 'MID'), isFwd = (p.pos === 'FWD');
+          let fatigueFactor = p.energy < 65 ? 1.5 : (p.energy > 85 ? 0.8 : 1.0);
+          let ageFactor = p.age >= 31 ? 1.4 : (p.age <= 21 ? 0.9 : 1.0);
 
-  // 5. Calcular xG por disparo
-  let homeXGPerShot = calculatexGPerShot(hAtt, aDef, Math.max(0, midDiff), hs.form, 1);
-  let awayXGPerShot = calculatexGPerShot(aAtt, hDef, Math.max(0, -midDiff), as.form, 0);
+          let baseRed = isDef ? 0.018 : (isMid ? 0.014 : (isFwd ? 0.003 : 0.001));
+          let redChance = baseRed * fatigueFactor;
+          let baseYellow = isDef ? 0.22 : (isMid ? 0.18 : (isFwd ? 0.06 : 0.02));
+          let yellowChance = baseYellow * fatigueFactor;
+          let baseInjury = isMid ? 0.04 : 0.03;
+          let injuryChance = baseInjury * fatigueFactor * ageFactor;
 
-  // 6. xG total
-  let homeXGTotal = homeShotsOnTarget * homeXGPerShot;
-  let awayXGTotal = awayShotsOnTarget * awayXGPerShot;
+          if (Math.random() < redChance) {
+              let min = randInt(10, 85);
+              events.push({min, type:'red', player:p, isHome});
+              penalty += ((90 - min) / 90) * 0.18; 
+              p.outMin = min; 
+          }
+          else if (Math.random() < injuryChance) {
+              let min = randInt(10, 85);
+              events.push({min, type:'injury', player:p, isHome});
+              if (bench.length > 0) { 
+                  let candsIn = bench.filter(b => b.pos === p.pos);
+                  if(!candsIn.length) candsIn = bench.filter(b => b.pos !== 'GK');
+                  
+                  if(candsIn.length) {
+                      let sub = candsIn.sort((a,b)=>b.rating-a.rating)[0];
+                      bench = bench.filter(x => x.id !== sub.id);
+                      events.push({min: min+1, type:'sub', player:sub, out:p, isHome});
+                      sub.inMin = min+1;
+                      penalty += ((90 - min) / 90) * 0.04; 
+                  } else {
+                      penalty += ((90 - min) / 90) * 0.18; 
+                  }
+              } else {
+                  penalty += ((90 - min) / 90) * 0.18; 
+              }
+              p.outMin = min;
+          }
+          else if (Math.random() < yellowChance) {
+              events.push({min:randInt(1,90), type:'yellow', player:p, isHome});
+          }
+      });
+      
+      let numSubs = randInt(1,4);
+      for(let i=0; i<numSubs; i++) {
+          if(!bench.length) break;
+          
+          let candOut = pitch.filter(p => !p.outMin).sort((a,b) => {
+              let hasYellowA = events.find(e => e.type === 'yellow' && e.player.id === a.id);
+              let hasYellowB = events.find(e => e.type === 'yellow' && e.player.id === b.id);
+              return (a.energy - (hasYellowA ? 20 : 0)) - (b.energy - (hasYellowB ? 20 : 0));
+          })[0];
 
-  // 7. Convertir xG a goles (con variación)
-  let homeGoals = convertXGToGoals(homeXGTotal);
-  let awayGoals = convertXGToGoals(awayXGTotal);
+          let hasYellow = events.find(e => e.type === 'yellow' && e.player.id === candOut.id);
+          
+          if(candOut && (candOut.energy < 65 || hasYellow)) {
+              let candsIn = bench.filter(b => b.pos === candOut.pos);
+              if(!candsIn.length) candsIn = bench.filter(b => b.pos !== 'GK');
+              
+              if(candsIn.length) {
+                  let sub = candsIn.sort((a,b)=>b.rating-a.rating)[0];
+                  bench = bench.filter(x => x.id !== sub.id);
+                  let min = randInt(55, 85);
+                  events.push({min, type:'sub', player:sub, out:candOut, isHome});
+                  candOut.outMin = min;
+                  sub.inMin = min;
+              }
+          }
+      }
+      return penalty;
+  }
+
+  let hPenalty = rollEventsAndPenalties(hPitch, hBench, true);
+  let aPenalty = rollEventsAndPenalties(aPitch, aBench, false);
+
+  hs.att *= (1 - hPenalty); hs.mid *= (1 - hPenalty); hs.def *= (1 - hPenalty); hs.gk *= (1 - hPenalty);
+  as.att *= (1 - aPenalty); as.mid *= (1 - aPenalty); as.def *= (1 - aPenalty); as.gk *= (1 - aPenalty);
+
+  let midDiff = (hs.mid + 4) - as.mid; 
+  let hPoss = Math.max(35, Math.min(65, 50 + (midDiff * 0.5)));
+  let aPoss = 100 - hPoss;
+
+  // --- LÓGICA TÁCTICA DEL PIZARRÓN ---
+  let hTac = H.tactics || { mental: 1.0, style: 1.0, press: 1.0 };
+  let aTac = A.tactics || { mental: 1.0, style: 1.0, press: 1.0 };
+
+  // Efecto del Estilo de pase en la posesión real
+  if (hTac.style === 0.7) hPoss -= 15;
+  if (aTac.style === 0.7) aPoss -= 15;
+  let tPoss = hPoss + aPoss;
+  hPoss = Math.round((hPoss / tPoss) * 100);
+  aPoss = 100 - hPoss;
+
+  let hShotsTarget = calculateShotsOnTarget(hPoss, hs.mid, true);
+  let aShotsTarget = calculateShotsOnTarget(aPoss, as.mid, false);
+
+  // Efecto de Presión y Mentalidad en Tiros y Contraataques
+  hShotsTarget = (hShotsTarget + (hTac.press === 1.3 ? 1.5 : 0)) * hTac.mental;
+  aShotsTarget = (aShotsTarget + (aTac.press === 1.3 ? 1.5 : 0)) * aTac.mental;
+
+  // Castigo por mentalidad muy ofensiva (deja huecos atrás)
+  aShotsTarget *= (hTac.mental === 1.4 ? 1.3 : hTac.mental === 0.7 ? 0.7 : 1.0);
+  hShotsTarget *= (aTac.mental === 1.4 ? 1.3 : aTac.mental === 0.7 ? 0.7 : 1.0);
+  // -----------------------------------
+
+  let hFatiguePenalty = hs.energyAvg < 75 ? (hs.energyAvg / 100) : 1;
+  let aFatiguePenalty = as.energyAvg < 75 ? (as.energyAvg / 100) : 1;
+
+  let hXG = hShotsTarget * calculatexGPerShot(hs.att, as.def * 0.8 + as.gk * 0.2, hFatiguePenalty, true);
+  let aXG = aShotsTarget * calculatexGPerShot(as.att, hs.def * 0.8 + hs.gk * 0.2, aFatiguePenalty, false);
+  let hG = convertXGToGoals(hXG);
+  let aG = convertXGToGoals(aXG);
+
+  function distributeGoals(goals, pitch, isHome) {
+      let mins = Array.from({length: goals}, () => randInt(1, 90)).sort((a,b)=>a-b);
+      mins.forEach(min => {
+          let type = 'goal', sc = null, ast = null;
+          let onPitch = pitch.filter(p => (!p.outMin || p.outMin > min) && (!p.inMin || p.inMin <= min));
+          if(!onPitch.length) onPitch = pitch; 
+          
+          if (Math.random() < 0.12) {
+              type = 'penalty';
+              sc = onPitch.filter(p=>p.pos!=='GK').sort((a,b)=>b.rating-a.rating)[0] || rand(onPitch);
+          } else if (Math.random() < 0.03) {
+              type = 'own_goal';
+              let opp = isHome ? aPitch : hPitch;
+              let oppOnPitch = opp.filter(p => (!p.outMin || p.outMin > min) && (!p.inMin || p.inMin <= min));
+              if(!oppOnPitch.length) oppOnPitch = opp;
+              sc = oppOnPitch.filter(p=>p.pos==='DEF'||p.pos==='GK')[0] || rand(oppOnPitch);
+          } else {
+              let pool = [];
+              onPitch.forEach(p => {
+                  let w = p.pos === "FWD" ? 6 : p.pos === "MID" ? 3 : p.pos === "DEF" ? 1 : 0.1;
+                  for(let i=0; i<Math.round(w*10); i++) pool.push(p);
+              });
+              sc = rand(pool) || rand(onPitch);
+              if(Math.random() < 0.75) {
+                  let ap = pool.filter(p => p.id !== sc.id);
+                  if(ap.length) ast = rand(ap);
+              }
+          }
+
+          if(Math.random() < 0.1) events.push({min: min-1, type: 'var_check', isHome});
+          events.push({min, type, player:sc, assist:ast, isHome});
+      });
+  }
+
+  distributeGoals(hG, hPitch, true);
+  distributeGoals(aG, aPitch, false);
+
+  [...hPitch, ...hBench, ...aPitch, ...aBench].forEach(p => { delete p.outMin; delete p.inMin; });
+  game.lastMatchEvents = events.sort((a,b) => a.min - b.min);
 
   return {
-    homeIdx: h,
-    awayIdx: a,
-    hG: homeGoals,
-    aG: awayGoals
+    homeIdx: h, awayIdx: a, hG, aG,
+    hPoss: Math.round(hPoss), aPoss: Math.round(aPoss),
+    hShots: Math.round(hShotsTarget + randInt(2,8)), aShots: Math.round(aShotsTarget + randInt(2,8)),
+    hShotsT: Math.round(hShotsTarget), aShotsT: Math.round(aShotsTarget),
+    hXG: hXG.toFixed(2), aXG: aXG.toFixed(2),
+    hPasses: Math.round((hPoss / 100) * 850) + randInt(-30, 30), aPasses: Math.round((aPoss / 100) * 850) + randInt(-30, 30),
+    hPassAcc: Math.min(94, Math.max(68, Math.round(75 + (hs.mid - 50)*0.35 + randInt(-4, 4)))), aPassAcc: Math.min(94, Math.max(68, Math.round(75 + (as.mid - 50)*0.35 + randInt(-4, 4)))),
+    hFouls: randInt(7, 18) + (hs.energyAvg < 70 ? 3 : 0), aFouls: randInt(7, 18) + (as.energyAvg < 70 ? 3 : 0),
+    hCorners: Math.max(0, Math.round((hShotsTarget + 3) * 0.45) + randInt(-2, 2)), aCorners: Math.max(0, Math.round((aShotsTarget + 3) * 0.45) + randInt(-2, 2))
   };
 }
 
@@ -1492,85 +1762,52 @@ function updateMoral(team,res){
   if(!team.streak)team.streak=[];
   team.streak.push(res>0?'V':res<0?'D':'E'); if(team.streak.length>5)team.streak.shift();
 }
-// NUEVO: Generador de línea de tiempo del partido y reparto de estadísticas (CON ENERGÍA)
 function processMatchStats(hTeam, aTeam, hG, aG, comp) {
-    function gen(team, goals, isHome) {
-        let evs = []; 
-        let s = getStarters(team); 
-        if(!s.length) return evs;
-        
-        // 1. Registro de partidos y DESGASTE FÍSICO
+    let events = game.lastMatchEvents || [];
+
+    function applyFatigue(team) {
+        // --- LÓGICA DE FATIGA SEGÚN LA PRESIÓN ---
+        let tac = team.tactics || { press: 1.0 };
+        // Presión alta (1.3) funde a los jugadores. Bloque bajo (0.8) los mantiene frescos.
+        let drain = tac.press === 1.3 ? randInt(25, 35) : (tac.press === 0.8 ? randInt(5, 12) : randInt(15, 25));
+
+        let s = getStarters(team);
         s.forEach(p => {
             p.apps++;
-            
-            // Los medios corren más, los porteros se cansan menos
-            let effort = randInt(15, 25);
-            if (p.pos === 'MID') effort += 6; 
-            if (p.pos === 'GK') effort = randInt(4, 8);
-            
-            p.energy = Math.max(10, (p.energy || 100) - effort);
-            p.rhythm = Math.min(100, (p.rhythm || 70) + 15); // Cogen ritmo por jugar
+            p.energy = Math.max(10, (p.energy || 100) - drain);
+            p.rhythm = Math.min(100, (p.rhythm || 70) + 15);
         });
-        
-        // 2. Generación de Goles
-        let gm = Array.from({length: goals}, () => randInt(1, 90)).sort((a,b)=>a-b);
-        gm.forEach(min => {
-            let pool=[]; 
-            s.forEach(p=>{
-                let w = p.pos === "FWD" ? 5 : p.pos === "MID" ? 3 : p.pos === "DEF" ? 1 : 0.2; 
-                for(let i=0; i<Math.round(w*10); i++) pool.push(p);
-            });
-            let sc = rand(pool); 
-            sc.goals++; 
-            sc['g'+comp] = (sc['g'+comp]||0)+1;
-            
-            let ast = null;
-            if(Math.random() < 0.7){
-                let ap = pool.filter(p => p.id !== sc.id); 
-                if(ap.length){
-                    ast = rand(ap); 
-                    ast.assists++; 
-                    ast['a'+comp] = (ast['a'+comp]||0)+1;
-                }
-            }
-            evs.push({min, type:'goal', player:sc, assist:ast, isHome});
-        });
-        
-        // 3. Lesiones y Tarjetas
-        s.forEach(p => {
-            if(Math.random() < 0.03){ 
-                p.injuredWeeks = randInt(1,5); 
-                evs.push({min:randInt(1,90), type:'injury', player:p, isHome}); 
-            }
-            if(Math.random() < 0.12){ 
-                p.yellows++; 
-                evs.push({min:randInt(1,90), type:'yellow', player:p, isHome}); 
-                if(p.yellows >= 5){ p.suspendedWeeks = 1; p.yellows = 0; } 
-            }
-            if(Math.random() < 0.015){ 
-                p.suspendedWeeks = randInt(1,2); 
-                evs.push({min:randInt(1,90), type:'red', player:p, isHome}); 
-            }
-        });
-
-        // 4. Simular una sustitución táctica
-        let bench = team.players.filter(p => !s.includes(p) && isAvailable(p));
-        if (bench.length > 0 && Math.random() < 0.7) {
-            let subOut = rand(s); 
-            let subIn = rand(bench);
-            evs.push({min: randInt(60, 85), type: 'sub', player: subIn, out: subOut, isHome});
-            
-            // El suplente también coge ritmo y se cansa un poco
-            subIn.apps++;
-            subIn.energy = Math.max(10, (subIn.energy || 100) - randInt(5, 12));
-            subIn.rhythm = Math.min(100, (subIn.rhythm || 70) + 8);
-        }
-        return evs;
     }
     
-    let hEv = gen(hTeam, hG, true); 
-    let aEv = gen(aTeam, aG, false);
-    return hEv.concat(aEv).sort((a,b)=> a.min - b.min);
+    applyFatigue(hTeam);
+    applyFatigue(aTeam);
+
+    events.forEach(ev => {
+        if(!ev.player) return;
+        let p = ev.player;
+        
+        if(ev.type === 'goal' || ev.type === 'penalty') {
+            p.goals = (p.goals || 0) + 1;
+            p['g'+comp] = (p['g'+comp] || 0) + 1;
+            if(ev.assist) {
+                ev.assist.assists = (ev.assist.assists || 0) + 1;
+                ev.assist['a'+comp] = (ev.assist['a'+comp] || 0) + 1;
+            }
+        } else if (ev.type === 'yellow') {
+            p.yellows = (p.yellows || 0) + 1;
+            if(p.yellows >= 5) { p.suspendedWeeks = 1; p.yellows = 0; } 
+        } else if (ev.type === 'red') {
+            p.suspendedWeeks = randInt(1, 2); 
+        } else if (ev.type === 'injury') {
+            p.injuredWeeks = randInt(1, 5); 
+        } else if (ev.type === 'sub') {
+            p.apps = (p.apps || 0) + 1;
+            p.energy = Math.max(10, (p.energy || 100) - randInt(8, 15));
+            p.rhythm = Math.min(100, (p.rhythm || 70) + 10);
+        }
+    });
+
+    return events;
 }
 // Modificado: Ahora las lesiones se curan solas en dailySimulation(). 
 // Aquí solo descontamos 1 semana a los sancionados (rojas/amarillas) tras jugar una jornada oficial.
@@ -1580,17 +1817,39 @@ function decrementStatus(team) {
     });
 }
 // Competiciones Europeas
-function initEurope(chlQual, eulQual){
-  let foreigners = game.teams.map((t,i)=>i).filter(i=>game.teams[i].div === 99).sort(()=>Math.random()-0.5);
-  // Temporada 1: Coger los primeros reales
-  if(chlQual.length === 0){
-      let d0 = game.teams.map((t,i)=>i).filter(i=>game.teams[i].div===0);
-      chlQual = d0.slice(0,4); eulQual = d0.slice(4,6);
+function initEurope(chlQual, eulQual) {
+  let foreigners = game.teams.map((t, i) => i).filter(i => game.teams[i].div === 99).sort(() => Math.random() - 0.5);
+  
+  if (chlQual.length === 0) {
+      let d0 = game.teams.map((t, i) => i).filter(i => game.teams[i].div === 0);
+      chlQual = d0.slice(0, 4); eulQual = d0.slice(4, 6);
   }
+  
+  // 16 equipos por competición (Octavos de final directos, Ida y Vuelta)
+  let chlTeams = chlQual.concat(foreigners.slice(0, 12)).sort(() => Math.random() - 0.5);
+  let eulTeams = eulQual.concat(foreigners.slice(12, 26)).sort(() => Math.random() - 0.5);
+
   game.europe = {
-      chl: { round: 0, teams: chlQual.concat(foreigners.slice(0, 12)).sort(()=>Math.random()-0.5), active: true, champion: null, name: "⭐ Champions" },
-      eul: { round: 0, teams: eulQual.concat(foreigners.slice(12, 26)).sort(()=>Math.random()-0.5), active: true, champion: null, name: "🟠 Europa League" }
+      chl: { name: "⭐ UEFA Champions League", round: 0, roundNames: ["Octavos (Ida)", "Octavos (Vuelta)", "Cuartos (Ida)", "Cuartos (Vuelta)", "Semis (Ida)", "Semis (Vuelta)", "FINAL"], matches: generateEuroMatches(chlTeams), active: true, champion: null },
+      eul: { name: "🟠 UEFA Europa League", round: 0, roundNames: ["Octavos (Ida)", "Octavos (Vuelta)", "Cuartos (Ida)", "Cuartos (Vuelta)", "Semis (Ida)", "Semis (Vuelta)", "FINAL"], matches: generateEuroMatches(eulTeams), active: true, champion: null }
   };
+}
+
+// Auxiliares para estructurar los emparejamientos
+function generateMatchesFromTeams(teamIndices) {
+    let matches = [];
+    for(let i=0; i<teamIndices.length; i+=2) {
+        matches.push({ home: teamIndices[i], away: teamIndices[i+1], hG: null, aG: null });
+    }
+    return matches;
+}
+
+function generateEuroMatches(teamIndices) {
+    let matches = [];
+    for(let i=0; i<teamIndices.length; i+=2) {
+        matches.push({ home: teamIndices[i], away: teamIndices[i+1], idahG: null, idaaG: null, vueltahG: null, vueltaaG: null, step: 1 }); // step 1 = ida, 2 = vuelta
+    }
+    return matches;
 }
 
 
@@ -1645,65 +1904,105 @@ function generateCalendar(startYear) {
   return cal.sort((a,b) => a.date - b.date);
 }
 
-function simCupRound(){
-  let cup=game.cup; if(!cup.active) return {html: ""};
-  let teams=cup.teams.slice(); let next=[]; 
-  let log=`<h3 style="margin-top:10px;">🏆 Copa - ${cup.roundNames[cup.round]}</h3>`;
+// SIMULACIÓN DE LA COPA (Partido único)
+function simCupRound() {
+  let cup = game.cup; if (!cup.active) return { html: "" };
+  let log = `<h3 style="margin-top:10px; color:var(--accent);">🏆 Copa del Rey - ${cup.roundNames[cup.round]}</h3>`;
   let myRes = null, myEvs = [], hName = "", aName = "";
+  let nextRoundTeams = [];
 
-  for(let i=0;i<teams.length;i+=2){
-    if(i+1>=teams.length){next.push(teams[i]);continue;}
-    let r=simMatch(teams[i],teams[i+1]);
-    let hG=r.hG,aG=r.aG; if(hG===aG){Math.random()<0.5?hG++:aG++;}
-    
-    let evs = processMatchStats(game.teams[teams[i]], game.teams[teams[i+1]], hG, aG, 'Cup');
-    let winner=hG>aG?teams[i]:teams[i+1]; next.push(winner);
-    
-    if(teams[i]===game.myTeamIndex||teams[i+1]===game.myTeamIndex){
-      log+=`<div class="match-result">${getBadge(game.teams[teams[i]].name)} ${game.teams[teams[i]].name} <b>${hG}-${aG}</b> ${game.teams[teams[i+1]].name} ${getBadge(game.teams[teams[i+1]].name)} <br> ${winner===game.myTeamIndex?'✅ Pasas':'❌ Eliminado'}</div>`;
-      if(winner===game.myTeamIndex)game.money+=150000;
-      myRes = {homeIdx: teams[i], awayIdx: teams[i+1], hG: hG, aG: aG};
-      myEvs = evs; hName = game.teams[teams[i]].name; aName = game.teams[teams[i+1]].name;
-    }
+  cup.matches.forEach(m => {
+      let r = simMatch(m.home, m.away);
+      m.hG = r.hG; m.aG = r.aG;
+      // Desempate por penaltis aleatorio si empatan
+      if(m.hG === m.aG) { Math.random() > 0.5 ? m.hG++ : m.aG++; }
+
+      let evs = processMatchStats(game.teams[m.home], game.teams[m.away], m.hG, m.aG, 'Cup');
+      let winner = m.hG > m.aG ? m.home : m.away;
+      nextRoundTeams.push(winner);
+
+      if (m.home === game.myTeamIndex || m.away === game.myTeamIndex) {
+          log += `<div class="match-result">${getBadge(game.teams[m.home].name)} ${game.teams[m.home].name} <b>${m.hG}-${m.aG}</b> ${game.teams[m.away].name} ${getBadge(game.teams[m.away].name)} <br> ${winner === game.myTeamIndex ? '✅ ¡Pasas de ronda!' : '❌ Eliminado de la Copa'}</div>`;
+          if (winner === game.myTeamIndex) game.money += 250000; // Premio por pasar ronda
+          myRes = { homeIdx: m.home, awayIdx: m.away, hG: m.hG, aG: m.aG };
+          myEvs = evs; hName = game.teams[m.home].name; aName = game.teams[m.away].name;
+      }
+  });
+
+  // Avanzar ronda o coronar campeón
+  if(nextRoundTeams.length === 1) {
+      cup.active = false;
+      cup.champion = nextRoundTeams[0];
+      if(cup.champion === game.myTeamIndex) game.money += 2000000;
+  } else {
+      cup.round++;
+      cup.matches = generateMatchesFromTeams(nextRoundTeams); // Nuevo sorteo con los clasificados
   }
-  cup.teams=next; cup.round++;
-  if(next.length===1){
-      cup.active=false; cup.champion=next[0]; 
-      log+=`<p style='color:#fbbf24;text-align:center;'>🏆 Campeón de Copa: ${game.teams[next[0]].name}!</p>`; 
-      if(next[0]===game.myTeamIndex) game.money+=1000000;
-  }
-  return {html: log, myResult: myRes, myEvents: myEvs, homeName: hName, awayName: aName};
+  return { html: log, myResult: myRes, myEvents: myEvs, homeName: hName, awayName: aName };
 }
 
-function simEuropeRound(type){
-  let comp = game.europe[type]; if(!comp.active) return {html: ""};
-  let teams=comp.teams.slice(); let next=[]; 
-  let log=`<h4 style="margin-top:15px; border-top:1px solid var(--border); padding-top:10px;">🌍 ${comp.name} - ${["Octavos", "Cuartos", "Semifinal", "FINAL"][comp.round]}</h4>`;
+// SIMULACIÓN DE EUROPA (Ida y Vuelta)
+function simEuropeRound(type) {
+  let comp = game.europe[type]; if (!comp.active) return { html: "" };
+  let log = `<h4 style="margin-top:15px; border-top:1px solid var(--border); padding-top:10px;">🌍 ${comp.name} - ${comp.roundNames[comp.round]}</h4>`;
   let myRes = null, myEvs = [], hName = "", aName = "";
+  
+  let isIda = (comp.round % 2 === 0);
+  let nextRoundTeams = [];
 
-  for(let i=0; i<teams.length; i+=2){
-      if(i+1 >= teams.length){ next.push(teams[i]); continue; }
-      let r = simMatch(teams[i], teams[i+1]);
-      let hG = r.hG, aG = r.aG;
-      if(hG === aG){ Math.random()<0.5 ? hG++ : aG++; } 
-      
-      let evs = processMatchStats(game.teams[teams[i]], game.teams[teams[i+1]], hG, aG, 'Europe');
-      let winner = hG > aG ? teams[i] : teams[i+1]; next.push(winner);
-      
-      if(teams[i] === game.myTeamIndex || teams[i+1] === game.myTeamIndex){
-          log += `<div class="match-result">${getBadge(game.teams[teams[i]].name)} ${game.teams[teams[i]].name} <b>${hG}-${aG}</b> ${game.teams[teams[i+1]].name} ${getBadge(game.teams[teams[i+1]].name)} <br> ${winner===game.myTeamIndex?'✅ Pasas':'❌ Eliminado'}</div>`;
-          if(winner === game.myTeamIndex) game.money += (type==='chl'? 3000000 : 1000000);
-          myRes = {homeIdx: teams[i], awayIdx: teams[i+1], hG: hG, aG: aG};
-          myEvs = evs; hName = game.teams[teams[i]].name; aName = game.teams[teams[i+1]].name;
+  comp.matches.forEach(m => {
+      if(isIda) {
+          // PARTIDO DE IDA
+          let r = simMatch(m.home, m.away);
+          m.idahG = r.hG; m.idaaG = r.aG;
+          let evs = processMatchStats(game.teams[m.home], game.teams[m.away], m.idahG, m.idaaG, 'Europe');
+          
+          if (m.home === game.myTeamIndex || m.away === game.myTeamIndex) {
+              log += `<div class="match-result"><b>(IDA)</b> ${getBadge(game.teams[m.home].name)} ${game.teams[m.home].name} <b>${m.idahG}-${m.idaaG}</b> ${game.teams[m.away].name} ${getBadge(game.teams[m.away].name)}</div>`;
+              myRes = { homeIdx: m.home, awayIdx: m.away, hG: m.idahG, aG: m.idaaG }; myEvs = evs;
+              hName = game.teams[m.home].name; aName = game.teams[m.away].name;
+          }
+      } else {
+          // PARTIDO DE VUELTA (Se cambian las tornas de campo m.away es local ahora)
+          let r = simMatch(m.away, m.home);
+          m.vueltahG = r.hG; m.vueltaaG = r.aG; // vueltahG = goles del que era visitante en la ida
+          let evs = processMatchStats(game.teams[m.away], game.teams[m.home], m.vueltahG, m.vueltaaG, 'Europe');
+
+          // Marcador Global
+          let totalHome = m.idahG + m.vueltaaG;
+          let totalAway = m.idaaG + m.vueltahG;
+
+          // Si hay empate global en la vuelta, prórroga/penaltis automáticos
+          if(totalHome === totalAway) {
+              Math.random() > 0.5 ? totalHome++ : totalAway++;
+          }
+
+          let winner = totalHome > totalAway ? m.home : m.away;
+          nextRoundTeams.push(winner);
+
+          if (m.home === game.myTeamIndex || m.away === game.myTeamIndex) {
+              log += `<div class="match-result"><b>(VUELTA)</b> ${getBadge(game.teams[m.away].name)} ${game.teams[m.away].name} <b>${m.vueltahG}-${m.vueltaaG}</b> ${game.teams[m.home].name} ${getBadge(game.teams[m.home].name)} <br> <b style="color:var(--accent)">Global: ${totalHome}-${totalAway}</b> - ${winner === game.myTeamIndex ? '✅ ¡A la siguiente fase!' : '❌ Eliminado de Europa'}</div>`;
+              myRes = { homeIdx: m.away, awayIdx: m.home, hG: m.vueltahG, aG: m.vueltaaG }; myEvs = evs;
+              hName = game.teams[m.away].name; aName = game.teams[m.home].name;
+          }
       }
+  });
+
+  // Avanzar la competición
+  if(!isIda) {
+      if(nextRoundTeams.length === 1) {
+          comp.active = false;
+          comp.champion = nextRoundTeams[0];
+          if(comp.champion === game.myTeamIndex) game.money += 10000000;
+      } else {
+          comp.matches = generateEuroMatches(nextRoundTeams); // Sorteo de la siguiente ronda
+          comp.round++;
+      }
+  } else {
+      comp.round++; // Solo avanza el contador de partidos (pasa a la vuelta)
   }
-  comp.teams = next; comp.round++;
-  if(next.length === 1){
-      comp.active = false; comp.champion = next[0];
-      log += `<p style='color:#fbbf24; text-align:center;'>🏆 ¡Campeón: ${game.teams[next[0]].name}!</p>`;
-      if(next[0] === game.myTeamIndex) game.money += (type==='chl'? 15000000 : 5000000);
-  }
-  return {html: log, myResult: myRes, myEvents: myEvs, homeName: hName, awayName: aName};
+
+  return { html: log, myResult: myRes, myEvents: myEvs, homeName: hName, awayName: aName };
 }
 
 function playNextEvent() {
@@ -1765,9 +2064,7 @@ function playNextEvent() {
       updateAll(); 
   }
 }
-// ---------------------------------------------
-
-// ACTUALIZADO: Simulador Visual En Directo
+// ACTUALIZADO: Simulador Visual En Directo Ultra-Realista
 function playLiveMatch(myResult, homeName, awayName, finalHtml, events) {
   document.getElementById("nextMatch").style.display = "none";
   document.getElementById("matchResult").innerHTML = ""; 
@@ -1777,7 +2074,16 @@ function playLiveMatch(myResult, homeName, awayName, finalHtml, events) {
   let comm = document.getElementById("liveCommentary"), score = document.getElementById("liveScoreboard"), bar = document.getElementById("liveTimeBar");
   let homeEvs = document.getElementById("liveHomeEvents"), awayEvs = document.getElementById("liveAwayEvents");
 
-  comm.innerHTML = "El árbitro pita el inicio del partido...<br>";
+  // Meteorología aleatoria que afecta la inmersión
+  let weathers = [
+      "☀️ Tarde soleada y césped en perfectas condiciones.", 
+      "🌧️ Lluvia intensa, el balón rueda muy rápido sobre el verde.", 
+      "☁️ Noche nublada y fresca, ambiente espectacular en las gradas.", 
+      "❄️ Mucho frío en el estadio, los jugadores calientan intensamente."
+  ];
+  let weather = weathers[Math.floor(Math.random() * weathers.length)];
+
+  comm.innerHTML = `🎙️ ${weather}<br>El árbitro pita el inicio del partido... ¡Rueda el balón!<br>`;
   score.innerHTML = `0 - 0`;
   document.getElementById("liveHomeName").innerHTML = `${homeName} ${getBadge(homeName)}`;
   document.getElementById("liveAwayName").innerHTML = `${getBadge(awayName)} ${awayName}`;
@@ -1796,29 +2102,52 @@ function playLiveMatch(myResult, homeName, awayName, finalHtml, events) {
 
       if(ev.type === 'goal') {
          if(ev.isHome) currentHg++; else currentAg++;
-         evIcon = "⚽"; evText = `¡GOL! ${ev.player.name} ` + (ev.assist ? `(Asist: ${ev.assist.name})` : '');
+         let desc = ev.assist ? `tras un pase milimétrico de ${ev.assist.name}.` : `en una brillante jugada individual.`;
+         evIcon = "⚽"; evText = `¡GOLAZO! ${ev.player.name} define a la perfección ${desc}`;
          evColor = ev.isHome ? "var(--ok)" : "#f87171";
          score.innerHTML = `${currentHg} - ${currentAg}`;
          let sideHTML = `<div><b>${ev.min}'</b> ⚽ ${ev.player.name}</div>`;
          if(ev.isHome) homeEvs.innerHTML += sideHTML; else awayEvs.innerHTML += sideHTML;
       }
+      else if(ev.type === 'penalty') {
+         if(ev.isHome) currentHg++; else currentAg++;
+         evIcon = "🎯"; evText = `¡GOL DE PENALTI! ${ev.player.name} engaña al portero y no perdona desde los 11 metros.`;
+         evColor = ev.isHome ? "var(--ok)" : "#f87171";
+         score.innerHTML = `${currentHg} - ${currentAg}`;
+         let sideHTML = `<div><b>${ev.min}'</b> 🎯 ${ev.player.name} (P)</div>`;
+         if(ev.isHome) homeEvs.innerHTML += sideHTML; else awayEvs.innerHTML += sideHTML;
+      }
+      else if(ev.type === 'own_goal') {
+         if(ev.isHome) currentHg++; else currentAg++;
+         evIcon = "🤦"; evText = `¡AUTOGOL! ${ev.player.name} desvía el balón hacia su propia portería. ¡Tragedia defensiva!`;
+         evColor = ev.isHome ? "var(--ok)" : "#f87171";
+         score.innerHTML = `${currentHg} - ${currentAg}`;
+         let sideHTML = `<div><b>${ev.min}'</b> 🤦 ${ev.player.name} (p.p.)</div>`;
+         if(ev.isHome) homeEvs.innerHTML += sideHTML; else awayEvs.innerHTML += sideHTML; // Se anota al equipo beneficiado
+      }
+      else if(ev.type === 'var_check') {
+         evIcon = "📺"; evText = `El VAR está revisando una jugada... Tensión tremenda en las gradas.`;
+         evColor = "#fbbf24";
+      }
       else if(ev.type === 'yellow') {
-         evIcon = "🟨"; evText = `Amarilla para ${ev.player.name}`;
+         evIcon = "🟨"; evText = `Amarilla para ${ev.player.name} por cortar un contragolpe peligroso.`;
          let sideHTML = `<div><b>${ev.min}'</b> 🟨 ${ev.player.name}</div>`;
          if(ev.isHome) homeEvs.innerHTML += sideHTML; else awayEvs.innerHTML += sideHTML;
       }
       else if(ev.type === 'red') {
-         evIcon = "🟥"; evText = `¡Roja para ${ev.player.name}!`; evColor = "#f87171";
+         evIcon = "🟥"; evText = `¡ROJA DIRECTA! ${ev.player.name} hace una entrada durísima y deja a su equipo con uno menos.`; evColor = "#f87171";
          let sideHTML = `<div><b>${ev.min}'</b> 🟥 ${ev.player.name}</div>`;
          if(ev.isHome) homeEvs.innerHTML += sideHTML; else awayEvs.innerHTML += sideHTML;
       }
       else if(ev.type === 'injury') {
-         evIcon = "🏥"; evText = `¡Se lesiona ${ev.player.name}!`; evColor = "#fbbf24";
+         let lesiones = ["se echa al suelo tocándose el muslo", "cae mal tras un salto", "sufre una dura entrada"];
+         let lesión = lesiones[Math.floor(Math.random() * lesiones.length)];
+         evIcon = "🏥"; evText = `¡Alarma médica! ${ev.player.name} ${lesión} y pide el cambio.`; evColor = "#fbbf24";
          let sideHTML = `<div><b>${ev.min}'</b> 🏥 ${ev.player.name}</div>`;
          if(ev.isHome) homeEvs.innerHTML += sideHTML; else awayEvs.innerHTML += sideHTML;
       }
       else if(ev.type === 'sub') {
-         evIcon = "🔄"; evText = `Cambio: Entra ${ev.player.name}, sale ${ev.out.name}.`;
+         evIcon = "🔄"; evText = `Movimiento en el banquillo: Entra ${ev.player.name}, se retira ${ev.out.name}.`;
          let sideHTML = `<div><b>${ev.min}'</b> 🔄 ${ev.player.name}</div>`;
          if(ev.isHome) homeEvs.innerHTML += sideHTML; else awayEvs.innerHTML += sideHTML;
       }
@@ -1829,22 +2158,34 @@ function playLiveMatch(myResult, homeName, awayName, finalHtml, events) {
 
     if(minute >= 90) {
       clearInterval(interval);
-      comm.innerHTML = "<b>¡FINAL DEL PARTIDO!</b><br>" + comm.innerHTML;
+      comm.innerHTML = "<b>¡FINAL DEL PARTIDO! El colegiado señala el túnel de vestuarios.</b><br>" + comm.innerHTML;
       setTimeout(() => {
           document.getElementById("liveMatchUI").style.display = "none";
           document.getElementById("nextMatch").style.display = "block";
-          document.getElementById("matchResult").innerHTML = finalHtml;
+          
+          let statsHtml = generateMatchStatsHTML(myResult);
+          document.getElementById("matchResult").innerHTML = finalHtml + statsHtml;
+          
           updateAll();
-      }, 3500);
+      }, 4000);
     }
-  }, 180); // Velocidad del directo
+  }, 180); // Velocidad de la retransmisión
 }
 
 // ====== COPAS Y FIN TEMPORADA ======
-function initCup(){
-  let idx=game.teams.map((t,i)=>i).filter(i=>game.teams[i].div!==99).sort(()=>Math.random()-0.5).slice(0,32);
-  if(!idx.includes(game.myTeamIndex) && game.teams[game.myTeamIndex].div!==99){idx[0]=game.myTeamIndex;}
-  game.cup={active:true,round:0,teams:idx,roundNames:["Dieciseisavos","Octavos","Cuartos","Semifinal","FINAL"],history:[],champion:null};
+function initCup() {
+  // Sorteo de 32 equipos (16 eliminatorias)
+  let idx = game.teams.map((t, i) => i).filter(i => game.teams[i].div !== 99).sort(() => Math.random() - 0.5).slice(0, 32);
+  if (!idx.includes(game.myTeamIndex) && game.teams[game.myTeamIndex].div !== 99) { idx[0] = game.myTeamIndex; }
+  
+  game.cup = {
+    active: true,
+    round: 0, // 0 = 1/16, 1 = Octavos, 2 = Cuartos, 3 = Semis, 4 = Final
+    roundNames: ["1/16 de Final", "Octavos de Final", "Cuartos de Final", "Semifinales", "GRAN FINAL"],
+    matches: generateMatchesFromTeams(idx), // Array de objetos {home, away, hG:null, aG:null, totalHg:null...}
+    history: [],
+    champion: null
+  };
 }
 
 function divSorted(d){return game.teams.filter(t=>t.div===d).sort((a,b)=>b.Pts!==a.Pts?b.Pts-a.Pts:(b.GF-b.GA)-(a.GF-a.GA));}
@@ -2226,32 +2567,66 @@ const VAL_R = [50, 60, 68, 74, 78, 82, 85, 88, 91, 94];
 const VAL_V = [50000, 200000, 1000000, 3500000, 8000000, 18000000, 35000000, 60000000, 90000000, 150000000];
 
 function marketValue(p){
-  let r=p.rating, base;
-  if(r<=VAL_R[0]) base=VAL_V[0];
-  else if(r>=VAL_R[VAL_R.length-1]) base=VAL_V[VAL_V.length-1];
-  else { 
-      for(let i=0;i<VAL_R.length-1;i++){ 
-          if(r>=VAL_R[i]&&r<=VAL_R[i+1]){ 
-              let t=(r-VAL_R[i])/(VAL_R[i+1]-VAL_R[i]); 
-              base=VAL_V[i]+t*(VAL_V[i+1]-VAL_V[i]); 
-              break; 
-          } 
-      } 
-  }
-  let age=p.age||25, af;
-  // Curva de edad más dura para evitar inflaciones absurdas
-  if(age<=18) af=1.5; else if(age<=21) af=1.3; else if(age<=24) af=1.1;
-  else if(age<=28) af=1.0; else if(age<=30) af=0.8; else if(age<=32) af=0.45;
-  else if(age<=34) af=0.20; else af=0.08;
-  
-  let pot=(typeof p.potential==='number')?p.potential:r;
-  let potBonus=(age<=23 && pot>r) ? 1+Math.min(0.4,(pot-r)/30) : 1;
-  
-  let v=Math.max(10000, Math.min(250000000, base*af*potBonus));
-  
-  if(v>=10000000) return Math.round(v/500000)*500000;
-  if(v>=1000000)  return Math.round(v/100000)*100000;
-  return Math.round(v/10000)*10000;
+    // Sub-función: Calcula el valor teórico base según la curva exponencial del juego
+    function getTheoreticalValue(rating, age, potential) {
+        const VAL_R = [50, 60, 68, 74, 78, 82, 85, 88, 91, 94];
+        const VAL_V = [50000, 200000, 1000000, 3500000, 8000000, 18000000, 35000000, 60000000, 90000000, 150000000];
+        let base = 50000;
+        
+        if(rating <= VAL_R[0]) base = VAL_V[0];
+        else if(rating >= VAL_R[VAL_R.length-1]) base = VAL_V[VAL_V.length-1];
+        else { 
+            for(let i=0; i<VAL_R.length-1; i++){ 
+                if(rating >= VAL_R[i] && rating <= VAL_R[i+1]){ 
+                    let t = (rating - VAL_R[i]) / (VAL_R[i+1] - VAL_R[i]); 
+                    base = VAL_V[i] + t * (VAL_V[i+1] - VAL_V[i]); 
+                    break; 
+                } 
+            } 
+        }
+        
+        let af = 1;
+        if(age <= 18) af = 1.5; else if(age <= 21) af = 1.3; else if(age <= 24) af = 1.1;
+        else if(age <= 28) af = 1.0; else if(age <= 30) af = 0.8; else if(age <= 32) af = 0.45;
+        else if(age <= 34) af = 0.20; else af = 0.08;
+        
+        let pot = (typeof potential === 'number') ? potential : rating;
+        let potBonus = (age <= 23 && pot > rating) ? 1 + Math.min(0.4, (pot - rating) / 30) : 1;
+        
+        return base * af * potBonus;
+    }
+
+    // 1. SI EL JUGADOR ES REAL Y TIENE UN VALOR BASE DE TEAMS.JS
+    if (p.baseValue && p.baseValue > 0) {
+        // ARREGLO: Comprobamos si la partida ya ha empezado (game existe). Si no, es temporada 1.
+        let currentSeason = (typeof game !== 'undefined' && game) ? game.season : 1;
+        
+        // ¿Qué edad tenía en la temporada 1 cuando empezó la partida?
+        let startAge = Math.max(15, p.age - (currentSeason - 1)); 
+        
+        // Calculamos qué multiplicador teórico tenía al empezar vs el que tiene AHORA
+        let theoreticalStart = getTheoreticalValue(p.startRating || p.rating, startAge, p.potential);
+        let theoreticalNow = getTheoreticalValue(p.rating, p.age, p.potential);
+        
+        // Ratio de crecimiento
+        let growthRatio = theoreticalNow / theoreticalStart;
+        
+        // Aplicamos el crecimiento a su precio REAL de la vida real
+        let finalValue = p.baseValue * growthRatio;
+        
+        let v = Math.max(10000, Math.min(250000000, finalValue)); // Tope de 250M
+        
+        // Redondeos estéticos (evita precios raros como 12.345.000€)
+        if(v >= 10000000) return Math.round(v/500000)*500000;
+        if(v >= 1000000)  return Math.round(v/100000)*100000;
+        return Math.round(v/10000)*10000;
+    }
+
+    // 2. MOTOR ORIGINAL (Solo para regens inventados de la cantera)
+    let v = Math.max(10000, Math.min(250000000, getTheoreticalValue(p.rating, p.age, p.potential)));
+    if(v >= 10000000) return Math.round(v/500000)*500000;
+    if(v >= 1000000)  return Math.round(v/100000)*100000;
+    return Math.round(v/10000)*10000;
 }
 
 function freeValue(p){ return Math.round(marketValue(p)*0.85); }
@@ -2426,6 +2801,14 @@ function openPlayerProfile(pid) {
             <div class="profile-stat-box"><span>Salario</span><b>${fmtMoney(wage)}/sem</b></div>
             <div class="profile-stat-box"><span>Contrato</span><b style="color:${p.contract<=1?'var(--bad)':'var(--text)'}">${p.contract||0} años</b></div>
             <div class="profile-stat-box"><span>Estado Físico</span><b>${p.injuredWeeks>0?'🏥 Lesionado ' + p.injuredWeeks + ' sem':(p.suspendedWeeks>0?'🟥 Sancionado':'✅ Disponible')}</b></div>
+        </div>
+        <h3 style="margin-top:15px; margin-bottom:12px;">Atributos Técnicos</h3>
+        <div class="profile-stats-grid">
+            <div class="profile-stat-box"><span>Defensa</span><b style="color:var(--def)">${p.def||p.rating}</b></div>
+            <div class="profile-stat-box"><span>Pase/Creación</span><b style="color:var(--mid)">${p.pas||p.rating}</b></div>
+            <div class="profile-stat-box"><span>Ataque</span><b style="color:var(--fwd)">${p.att||p.rating}</b></div>
+            <div class="profile-stat-box"><span>Físico</span><b style="color:var(--gk)">${p.phy||p.rating}</b></div>
+            <div class="profile-stat-box"><span>Mentalidad</span><b>${p.men||p.rating}</b></div>
         </div>
 
         <h3 style="margin-bottom:12px;">Rendimiento (Temporada Actual ${game.season})</h3>
@@ -2881,9 +3264,13 @@ function renderTrain(){
 // ====== MOTOR DE SIMULACIÓN DIARIA ======
 let isSimulating = false;
 
+
 function processTimeUntilEvent() {
     if (isSimulating) return;
     if (game.calendarIndex >= game.calendar.length) { endSeason(); return; }
+
+    // NUEVO: Limpiamos el resultado del partido anterior en cuanto empezamos a avanzar los días
+    document.getElementById("matchResult").innerHTML = "";
 
     let nextEv = game.calendar[game.calendarIndex];
     let targetDate = nextEv.date;
@@ -2922,7 +3309,7 @@ function processTimeUntilEvent() {
             renderNextMatch();
             updateAll();
         }
-    }, 120); // 120ms por día (ajusta este valor si quieres que pase más rápido o más lento)
+    }, 120); // 120ms por día
 }
 
 function dailySimulation() {
@@ -2956,6 +3343,7 @@ function dailySimulation() {
 }
 
 
+// ====== PREPARACIÓN DE PANTALLA DE SIGUIENTE PARTIDO CORREGIDA ======
 function renderNextMatch() {
   let div = document.getElementById("nextMatch");
   if(!game.calendar || game.calendarIndex >= game.calendar.length){
@@ -2965,7 +3353,7 @@ function renderNextMatch() {
   
   let ev = game.calendar[game.calendarIndex];
   
-  // ESTADO 1: No es el día del evento. Mostrar botón de "Continuar Tiempo"
+  // ESTADO 1: No es el día del evento
   if (game.date < ev.date) {
       let daysLeft = Math.ceil((ev.date - game.date) / 86400000);
       div.innerHTML = `
@@ -2987,16 +3375,21 @@ function renderNextMatch() {
       if (game.fixtures[d] && game.fixtures[d][ev.roundIdx]) {
           myMatch = game.fixtures[d][ev.roundIdx].find(x => x[0] === game.myTeamIndex || x[1] === game.myTeamIndex);
       }
-  } else if (ev.type === 'cup' && game.cup && game.cup.active && game.cup.round === ev.roundIdx && game.cup.teams.includes(game.myTeamIndex)) {
-      let idx = game.cup.teams.indexOf(game.myTeamIndex);
-      let oppIdx = idx % 2 === 0 ? game.cup.teams[idx+1] : game.cup.teams[idx-1];
-      if(oppIdx !== undefined) myMatch = [game.cup.teams[idx], oppIdx]; 
-  } else if (ev.type === 'europe') {
+  } 
+  else if (ev.type === 'cup' && game.cup && game.cup.active && game.cup.round === ev.roundIdx) {
+      let matchObj = (game.cup.matches || []).find(m => m.home === game.myTeamIndex || m.away === game.myTeamIndex);
+      if (matchObj) myMatch = [matchObj.home, matchObj.away]; 
+  } 
+  else if (ev.type === 'europe' && game.europe) {
       ['chl', 'eul'].forEach(t => {
-          if(game.europe[t] && game.europe[t].active && game.europe[t].round === ev.roundIdx && game.europe[t].teams.includes(game.myTeamIndex)){
-              let idx = game.europe[t].teams.indexOf(game.myTeamIndex);
-              let oppIdx = idx % 2 === 0 ? game.europe[t].teams[idx+1] : game.europe[t].teams[idx-1];
-              if(oppIdx !== undefined) myMatch = [game.europe[t].teams[idx], oppIdx];
+          let comp = game.europe[t];
+          if(comp && comp.active && comp.round === ev.roundIdx) {
+              let matchObj = (comp.matches || []).find(m => m.home === game.myTeamIndex || m.away === game.myTeamIndex);
+              if(matchObj) {
+                  let isIda = (comp.round % 2 === 0);
+                  if(isIda) myMatch = [matchObj.home, matchObj.away];
+                  else myMatch = [matchObj.away, matchObj.home];
+              }
           }
       });
   }
@@ -3011,7 +3404,8 @@ function renderNextMatch() {
   }
   div.innerHTML = html;
 }
-// --- RENDERIZADO DEL CALENDARIO (A PRUEBA DE FALLOS) ---
+
+// ====== RENDERIZADO DEL CALENDARIO CORREGIDO ======
 function renderCalendar() {
     let cont = document.getElementById("calendarTable");
     if(!cont) return;
@@ -3041,7 +3435,6 @@ function renderCalendar() {
 
             let compColor = ev.type === 'league' ? "var(--text)" : ev.type === 'cup' ? "#fbbf24" : "#60a5fa";
             
-            // --- DETECCIÓN DEL RIVAL ---
             let rivalText = "<span style='color:var(--text-faint)'>No participas</span>";
             let opponent = null;
             let isHome = false;
@@ -3052,36 +3445,39 @@ function renderCalendar() {
                     isHome = match[0] === myTeam;
                     opponent = game.teams[isHome ? match[1] : match[0]];
                 }
-            } else if (ev.type === 'cup' && game.cup && game.cup.active) {
-                if (game.cup.teams.includes(myTeam)) {
-                    // Si el sorteo aún no se ha hecho para rondas futuras, mostramos "Por definir"
-                    if (ev.roundIdx === game.cup.round) {
-                        let myIdx = game.cup.teams.indexOf(myTeam);
-                        let oppIdx = myIdx % 2 === 0 ? game.cup.teams[myIdx + 1] : game.cup.teams[myIdx - 1];
-                        if (oppIdx !== undefined) {
-                            opponent = game.teams[oppIdx];
-                            isHome = myIdx % 2 === 0;
-                        }
-                    } else if (ev.roundIdx > game.cup.round) {
+            } else if (ev.type === 'cup' && game.cup) {
+                if (ev.roundIdx < game.cup.round) {
+                    rivalText = "<span style='color:var(--text-faint)'>Ronda pasada</span>";
+                } else if (game.cup.active) {
+                    let myMatch = (game.cup.matches || []).find(m => m.home === myTeam || m.away === myTeam);
+                    if (myMatch && ev.roundIdx === game.cup.round) {
+                        isHome = (myMatch.home === myTeam);
+                        opponent = game.teams[isHome ? myMatch.away : myMatch.home];
+                    } else if (myMatch && ev.roundIdx > game.cup.round) {
                         rivalText = "<span style='color:var(--text-dim)'>Por definir (Si pasas)</span>";
+                    } else {
+                        rivalText = "<span style='color:var(--bad)'>Eliminado</span>";
                     }
-                } else if (ev.roundIdx >= game.cup.round) {
-                    rivalText = "<span style='color:var(--bad)'>Eliminado</span>";
+                } else {
+                    rivalText = "<span style='color:var(--text-faint)'>Finalizada</span>";
                 }
             } else if (ev.type === 'europe' && game.europe) {
-                // Lógica similar para Europa
                 ['chl', 'eul'].forEach(type => {
                     let comp = game.europe[type];
-                    if (comp && comp.active && comp.teams.includes(myTeam)) {
-                        if (ev.roundIdx === comp.round) {
-                            let myIdx = comp.teams.indexOf(myTeam);
-                            let oppIdx = myIdx % 2 === 0 ? comp.teams[myIdx + 1] : comp.teams[myIdx - 1];
-                            if (oppIdx !== undefined) {
-                                opponent = game.teams[oppIdx];
-                                isHome = myIdx % 2 === 0;
+                    if (comp) {
+                        if (ev.roundIdx < comp.round) {
+                            if(rivalText === "<span style='color:var(--text-faint)'>No participas</span>") {
+                                 rivalText = "<span style='color:var(--text-faint)'>Ronda pasada</span>";
                             }
-                        } else if (ev.roundIdx > comp.round) {
-                            rivalText = "<span style='color:var(--text-dim)'>Por definir</span>";
+                        } else if (comp.active) {
+                            let myMatch = (comp.matches || []).find(m => m.home === myTeam || m.away === myTeam);
+                            if (myMatch && ev.roundIdx === comp.round) {
+                                let isIda = (comp.round % 2 === 0);
+                                isHome = isIda ? (myMatch.home === myTeam) : (myMatch.away === myTeam);
+                                opponent = game.teams[myMatch.home === myTeam ? myMatch.away : myMatch.home];
+                            } else if (myMatch && ev.roundIdx > comp.round) {
+                                rivalText = "<span style='color:var(--text-dim)'>Por definir</span>";
+                            }
                         }
                     }
                 });
@@ -3109,36 +3505,77 @@ function renderCalendar() {
         }, 50);
 
     } catch (error) {
+        console.error("Error cargando el calendario:", error);
         cont.innerHTML = `<tr><td colspan="4" style="color:#ef5d8f; text-align:center;">Error al cargar el calendario.</td></tr>`;
     }
 }
-function renderCup(){
-  let c=document.getElementById("cupContent"); if(!game.cup){c.innerHTML="Sin copa.";return;}
-  let cup=game.cup, html="";
-  if(cup.champion){html+=`<h3 class="center">🏆 Campeón: ${getBadge(game.teams[cup.champion].name)} ${game.teams[cup.champion].name}</h3>`;}
-  else{ 
-    html+=`<p>Ronda actual: <b>${cup.roundNames[cup.round]}</b></p>`;
-    html+="<br><table><tr><th>Equipo</th></tr>";
-    cup.teams.forEach(ti=>{html+=`<tr class="${ti===game.myTeamIndex?'my-team':''}"><td>${getBadge(game.teams[ti].name)} ${game.teams[ti].name}</td></tr>`;});
-    html+="</table>";
-  } c.innerHTML=html;
+// ====== RENDER VISUAL DE COPAS ESTILO ELIMINATORIAS ======
+
+function renderCup() {
+  let c = document.getElementById("cupContent"); if (!game.cup) { c.innerHTML = "Sin copa."; return; }
+  let cup = game.cup;
+  let html = "";
+
+  if (cup.champion) {
+      html += `<div class="center" style="padding:20px; background:var(--card-2); border-radius:var(--radius);">
+                <span style="font-size:3em;">🏆</span>
+                <h2>🏆 ¡CAMPEÓN DE LA COPA DEL REY! 🏆</h2>
+                <p style="font-size:1.4em; color:var(--accent); font-weight:700;">${getBadge(game.teams[cup.champion].name)} ${game.teams[cup.champion].name}</p>
+              </div>`;
+  } else { 
+      html += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <p>Fase Actual: <b style="color:var(--accent);">${cup.roundNames[cup.round]}</b></p>
+                <span class="small" style="opacity:0.6;">Eliminatoria a partido único</span>
+               </div>`;
+      html += `<table><tr><th>Equipo Local</th><th class="center">Resultado</th><th>Equipo Visitante</th></tr>`;
+      
+      cup.matches.forEach(m => {
+          let isMyMatch = (m.home === game.myTeamIndex || m.away === game.myTeamIndex);
+          let scoreStr = (m.hG !== null) ? `<b>${m.hG} - ${m.aG}</b>` : `<span style="color:var(--text-faint)">vs</span>`;
+          
+          html += `<tr class="${isMyMatch ? 'my-team' : ''}">
+              <td class="flex-cell">${getBadge(game.teams[m.home].name)} ${game.teams[m.home].name}</td>
+              <td class="center" style="font-size:1.1em; background:var(--bg-soft); width:80px;">${scoreStr}</td>
+              <td>${getBadge(game.teams[m.away].name)} ${game.teams[m.away].name}</td>
+          </tr>`;
+      });
+      html += "</table>";
+  } 
+  c.innerHTML = html;
 }
-function renderEurope(){
-   let e = document.getElementById("europeContent"); if(!game.europe) return;
-   let h = "";
+
+function renderEurope() {
+   let e = document.getElementById("europeContent"); if (!game.europe) return;
+   let html = "";
+
    ['chl', 'eul'].forEach(type => {
        let comp = game.europe[type];
-       h += `<h3>${comp.name}</h3>`;
-       if(comp.champion){ h += `<p style="margin-bottom:15px;">🏆 Campeón: <b>${getBadge(game.teams[comp.champion].name)} ${game.teams[comp.champion].name}</b></p>`; } 
-       else {
-           h += `<p>Ronda: <b>${["Octavos", "Cuartos", "Semifinal", "FINAL"][comp.round]}</b></p>`;
-           h += `<table style="margin-bottom:15px;"><tr><th>Equipo</th><th>Nivel</th></tr>`;
-           comp.teams.forEach(ti => {
-               let myTeamClass = ti===game.myTeamIndex ? 'my-team' : '';
-               h += `<tr class="${myTeamClass}"><td>${getBadge(game.teams[ti].name)} ${game.teams[ti].name}</td><td>${teamRating(game.teams[ti])}</td></tr>`;
-           }); h += `</table>`;
+       html += `<div style="background:var(--card-2); padding:15px; border-radius:var(--radius); margin-bottom:20px; border:1px solid var(--border);">`;
+       html += `<h3 style="color:var(--def); margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:6px;">${comp.name}</h3>`;
+       
+       if (comp.champion) {
+           html += `<p style="font-size:1.1em; color:var(--gk);">🏆 Campeón: <b>${getBadge(game.teams[comp.champion].name)} ${game.teams[comp.champion].name}</b></p>`;
+       } else {
+           html += `<p class="small" style="margin-bottom:10px;">Ronda actual: <b style="color:var(--text);">${comp.roundNames[comp.round] || "Fase Final"}</b></p>`;
+           html += `<table><tr><th>Equipo 1</th><th class="center">Ida</th><th class="center">Vuelta</th><th>Equipo 2</th></tr>`;
+           
+           comp.matches.forEach(m => {
+               let isMyMatch = (m.home === game.myTeamIndex || m.away === game.myTeamIndex);
+               let idaStr = (m.idahG !== null) ? `${m.idahG}-${m.idaaG}` : "-";
+               let vueltaStr = (m.vueltahG !== null) ? `${m.vueltaaG}-${m.vueltahG}` : "-"; // Se lee en orden del equipo 1 vs equipo 2
+               
+               html += `<tr class="${isMyMatch ? 'my-team' : ''}">
+                   <td class="flex-cell">${getBadge(game.teams[m.home].name)} ${game.teams[m.home].name}</td>
+                   <td class="center" style="background:var(--bg); font-weight:600; width:50px;">${idaStr}</td>
+                   <td class="center" style="background:var(--bg); font-weight:600; width:50px;">${vueltaStr}</td>
+                   <td>${getBadge(game.teams[m.away].name)} ${game.teams[m.away].name}</td>
+               </tr>`;
+           });
+           html += `</table>`;
        }
-   }); e.innerHTML = h;
+       html += `</div>`;
+   }); 
+   e.innerHTML = html;
 }
 
 // ====== RENDER HISTORIAL DE FICHAJES Y EVOLUCIÓN DE VALOR ======
@@ -3468,7 +3905,7 @@ function updateAll() {
   // OJO: Para finanzas solo llamamos a ensureFinances. 
   // Si llamáramos a renderFinances() estando la pestaña oculta, el slider "range" visual se volvería loco.
   if (typeof ensureFinances === 'function') ensureFinances();
-
+updateTacticalAnalysis();
   saveGame();
 }
 // ====== GUARDADO ======
@@ -3596,16 +4033,21 @@ function loadExternalData() {
                 targetRealData.players = club.players.map(p => {
                     let age = calcAgeFromDOB(p.dateOfBirth);
                     let mv = parseMarketValue(p.marketValue);
-                    let rating = calculateRatingFromValue(mv);
+                    let baseRating = calculateRatingFromValue(mv);
                     let pos = mapPosition(p.position);
+                    
+                    // NUEVO: Generamos atributos para los jugadores reales
+                    let { attrs, trueRating } = generateAttributes(baseRating, pos);
                     let natEmoji = (p.nationality && p.nationality.length > 0) ? (NAT_EMOJIS[p.nationality[0]] || "🌍") : "🌍";
 
                     return {
                         name: p.name,
                         pos: pos,
-                        rating: rating,
+                        rating: trueRating,
                         age: age,
-                        nat: natEmoji
+                        nat: natEmoji,
+                        baseValue: mv,
+                        def: attrs.def, pas: attrs.pas, att: attrs.att, phy: attrs.phy, men: attrs.men
                     };
                 });
             }
@@ -3726,7 +4168,109 @@ function applyBudgetAdjustment() {
     updateAll();
 }
 // -------------------------------------------
+// Busca el próximo partido en el calendario para saber contra quién calculamos el xG
+function getNextOpponent() {
+    if (!game || !game.calendar || game.calendarIndex >= game.calendar.length) return null;
+    let ev = game.calendar[game.calendarIndex];
+    let myIdx = game.myTeamIndex;
 
+    if (ev.type === 'league') {
+        let d = game.teams[myIdx].div;
+        if(game.fixtures[d] && game.fixtures[d][ev.roundIdx]) {
+            let match = game.fixtures[d][ev.roundIdx].find(x => x[0] === myIdx || x[1] === myIdx);
+            if (match) return game.teams[match[0] === myIdx ? match[1] : match[0]];
+        }
+    } else if (ev.type === 'cup' && game.cup && game.cup.active && game.cup.round === ev.roundIdx) {
+        let match = game.cup.matches.find(m => m.home === myIdx || m.away === myIdx);
+        if (match) return game.teams[match.home === myIdx ? match.away : match.home];
+    } else if (ev.type === 'europe' && game.europe) {
+        for (let t of ['chl', 'eul']) {
+            let comp = game.europe[t];
+            if (comp && comp.active && comp.round === ev.roundIdx) {
+                let match = comp.matches.find(m => m.home === myIdx || m.away === myIdx);
+                if (match) return game.teams[match.home === myIdx ? match.away : match.home];
+            }
+        }
+    }
+    return null;
+}
+
+// Actualiza el panel táctico dinámicamente
+function updateTacticalAnalysis() {
+    if (!game) return;
+    let opp = getNextOpponent();
+    let div = document.getElementById("tacticalAnalysis");
+
+    // Leer selectores
+    let mental = parseFloat(document.getElementById("tacticalMental").value) || 1.0;
+    let style = parseFloat(document.getElementById("tacticalStyle").value) || 1.0;
+    let press = parseFloat(document.getElementById("tacticalPress").value) || 1.0;
+
+    // Guardar táctica en tu equipo para que el simulador (simMatch) la lea
+    let myTeam = game.teams[game.myTeamIndex];
+    myTeam.tactics = { mental, style, press };
+
+    if (!opp) {
+        div.innerHTML = "<p class='small center' style='color:var(--text-dim)'>No hay un próximo rival a la vista.</p>";
+        return;
+    }
+
+    // Calcular estadísticas base
+    let myStats = getTeamStats(myTeam);
+    let oppStats = getTeamStats(opp);
+
+    // 1. ESTILO Y POSESIÓN
+    let midDiff = (myStats.mid * (style === 1.2 ? 1.2 : style === 0.7 ? 0.6 : 1)) - oppStats.mid;
+    let myPoss = Math.max(30, Math.min(70, 50 + (midDiff * 0.8)));
+    if (style === 0.7) myPoss = Math.max(30, myPoss - 15); // Balones largos baja la posesión
+    
+    let warnings = [];
+    if (style === 1.2 && myStats.mid < 68) {
+        warnings.push("⚠️ <b>Tiki-Taka Peligroso:</b> Tus medios no tienen suficiente calidad. Cometerán errores.");
+        myPoss -= 8;
+    }
+    if (press === 1.3) warnings.push("⚠️ <b>Desgaste Extremo:</b> Tus jugadores se fundirán rápido. Usa los 5 cambios.");
+    if (press === 0.8) warnings.push("🔋 <b>Ahorro Físico:</b> El bloque bajo mantendrá a tu plantilla muy fresca.");
+
+    // 2. MENTALIDAD, PRESIÓN Y xG
+    let oppPoss = 100 - myPoss;
+    
+    // Tiros base
+    let myShots = (3 + (myPoss / 100) * 5) + (press === 1.3 ? 1.5 : 0);
+    let oppShots = 3 + (oppPoss / 100) * 5;
+
+    // Ajuste de Mentalidad (El riesgo)
+    myShots *= mental;
+    oppShots *= (mental === 1.4 ? 1.3 : mental === 0.7 ? 0.7 : 1); // Si vas al ataque, te expones a la contra
+
+    // Calidad del tiro
+    let myXGPerShot = Math.max(0.04, Math.min(0.25, 0.10 + ((myStats.att - oppStats.def) * 0.0035)));
+    let oppXGPerShot = Math.max(0.04, Math.min(0.25, 0.10 + ((oppStats.att - myStats.def) * 0.0035)));
+
+    let myTotalXG = (myShots * myXGPerShot).toFixed(2);
+    let oppTotalXG = (oppShots * oppXGPerShot).toFixed(2);
+
+    // 3. PINTAR EL PANEL
+    div.innerHTML = `
+        <div style="background:var(--bg-soft); padding:14px; border-radius:var(--radius-s); margin-top:10px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:0.9em; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                <span>Próximo Rival: <b>${opp.name}</b> ${getBadge(opp.name)}</span>
+                <span>Posesión Est.: <b style="color:var(--accent)">${Math.round(myPoss)}%</b></span>
+            </div>
+            <div style="display:flex; gap:12px;">
+                <div style="flex:1; background:var(--card); padding:12px; text-align:center; border-radius:var(--radius-s); border-bottom: 3px solid var(--ok);">
+                    <span style="font-size:0.75em; color:var(--text-dim); text-transform:uppercase;">Tu xG Esperado</span><br>
+                    <b style="font-size:1.8em; color:var(--text);">${myTotalXG}</b>
+                </div>
+                <div style="flex:1; background:var(--card); padding:12px; text-align:center; border-radius:var(--radius-s); border-bottom: 3px solid var(--bad);">
+                    <span style="font-size:0.75em; color:var(--text-dim); text-transform:uppercase;">xG Rival (Riesgo)</span><br>
+                    <b style="font-size:1.8em; color:var(--text);">${oppTotalXG}</b>
+                </div>
+            </div>
+            ${warnings.length > 0 ? `<div style="margin-top:12px; font-size:0.85em; background:var(--card); padding:10px; border-radius:var(--radius-s); line-height:1.5;">${warnings.join('<br>')}</div>` : ''}
+        </div>
+    `;
+}
 </script>
 </body>
 </html>
